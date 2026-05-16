@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TKG Log Generator</title>
+
+<style>
+  body {
+    font-family: monospace;
+    background: #0e0e10;
+    color: #f4f4f4;
+    padding: 20px;
+  }
+
+  h2 { color: #ff5555; }
+
+  label { display:block; margin-top:10px; }
+
+  input, textarea, select {
+    width:100%;
+    padding:8px;
+    background:#1e1e22;
+    color:#fff;
+    border:1px solid #333;
+    border-radius:5px;
+    box-sizing:border-box;
+  }
+
+  textarea { min-height:120px; resize:vertical; }
+
+  button {
+    margin-top:10px;
+    padding:10px 14px;
+    background:#ff5555;
+    color:#fff;
+    border:none;
+    border-radius:5px;
+    cursor:pointer;
+  }
+
+  #copyBtn { background:#4caf50; margin-left:10px; }
+  #deleteBtn { background:#b91c1c; margin-left:10px; }
+
+  .row { display:flex; gap:15px; flex-wrap:wrap; }
+
+  .panel { flex:1; min-width:340px; }
+
+  .fieldBox {
+    background:#15151a;
+    border:1px solid #333;
+    padding:10px;
+    border-radius:6px;
+    margin-top:10px;
+  }
+
+  .fieldRow {
+    display:flex;
+    gap:10px;
+    margin-top:6px;
+  }
+
+  .smallSelect { width:40%; }
+  .smallInput { width:60%; }
+
+  #output {
+    background:#1e1e22;
+    color:#00ff9c;
+    padding:10px;
+    border-radius:5px;
+    border:1px solid #333;
+    min-height:300px;
+    white-space:pre-wrap;
+  }
+
+  footer {
+    margin-top: 25px;
+    text-align: center;
+    color: #777;
+    font-size: 0.85em;
+  }
+</style>
+</head>
+
+<body>
+
+<h2>☰ TKG Log Generator ☰</h2>
+
+<div class="row">
+
+  <div class="panel">
+
+    <label>Template</label>
+    <select id="templateSelect"></select>
+
+    <label>Template Editor</label>
+    <textarea id="templateInput"></textarea>
+
+    <button id="saveBtn">Save / Overwrite</button>
+    <button id="deleteBtn">Delete Template</button>
+
+    <h3>Fields</h3>
+    <div id="fieldEditor"></div>
+
+  </div>
+
+  <div class="panel">
+
+    <h3>Generated Form</h3>
+    <div id="formContainer"></div>
+
+    <button id="generateBtn">Generate</button>
+    <button id="copyBtn">Copy</button>
+
+    <h3>Output</h3>
+    <div id="output"></div>
+
+  </div>
+
+</div>
+
+<footer>
+  Made with ❤️ by Neptune6866, with inspiration from hxyqt
+</footer>
+
+<script>
+
+(() => {
+
+  const templateSelect = document.getElementById("templateSelect");
+  const templateInput = document.getElementById("templateInput");
+  const fieldEditor = document.getElementById("fieldEditor");
+  const formContainer = document.getElementById("formContainer");
+  const output = document.getElementById("output");
+
+  let fieldState = [];
+  let currentIndex = null;
+
+  const getTemplates = () =>
+    JSON.parse(localStorage.getItem("tkgTemplates") || "[]");
+
+  const saveTemplates = (t) =>
+    localStorage.setItem("tkgTemplates", JSON.stringify(t));
+
+  function saveFieldDefaults() {
+    localStorage.setItem("tkgFieldDefaults", JSON.stringify(fieldState));
+  }
+
+  function loadFieldDefaults() {
+    return JSON.parse(localStorage.getItem("tkgFieldDefaults") || "null");
+  }
+
+  function renderDropdown() {
+    const t = getTemplates();
+
+    templateSelect.innerHTML =
+      `<option value="new">+ New Template</option>` +
+      t.map((x,i)=>`<option value="${i}">${x.name}</option>`).join("");
+  }
+
+  function extract(template, saved = {}) {
+    const matches = [...template.matchAll(/{(.*?)}/g)];
+
+    return [...new Map(matches.map(m => {
+      const [name, type] = m[1].split(":");
+
+      const savedField = saved[name] || {};
+
+      return [name, {
+        name,
+        type: savedField.type || type || "text",
+        default: savedField.default || ""
+      }];
+    })).values()];
+  }
+
+  function syncTemplateFromFields() {
+    let tpl = templateInput.value;
+
+    fieldState.forEach(f => {
+      tpl = tpl.replace(new RegExp(`{${f.name}(:.*?)?}`, "g"), `{${f.name}}`);
+    });
+
+    fieldState.forEach(f => {
+      if (f.type !== "text") {
+        tpl = tpl.replaceAll(`{${f.name}}`, `{${f.name}:${f.type}}`);
+      }
+    });
+
+    templateInput.value = tpl;
+  }
+
+  function renderFields() {
+    fieldEditor.innerHTML = "";
+
+    fieldState.forEach((f,i)=>{
+
+      const box = document.createElement("div");
+      box.className = "fieldBox";
+
+      box.innerHTML = `
+        <label>${f.name}</label>
+
+        <div class="fieldRow">
+          <select onchange="updateType(${i}, this.value)" class="smallSelect">
+            <option ${f.type==="text"?"selected":""}>text</option>
+            <option ${f.type==="textarea"?"selected":""}>textarea</option>
+            <option ${f.type==="timestamp"?"selected":""}>timestamp</option>
+          </select>
+
+          <input class="smallInput" value="${f.name}" disabled />
+        </div>
+
+        <label>Default value</label>
+        <input value="${f.default || ""}" onchange="updateDefault(${i}, this.value)">
+      `;
+
+      fieldEditor.appendChild(box);
+    });
+  }
+
+  function renderForm() {
+    formContainer.innerHTML = "";
+
+    fieldState.forEach(f=>{
+
+      const box = document.createElement("div");
+      box.className = "fieldBox";
+
+      box.innerHTML = `<label>${f.name}</label>`;
+
+      if (f.type === "textarea") {
+        const i = document.createElement("textarea");
+        i.id = `f-${f.name}`;
+        i.value = f.default || "";
+        box.appendChild(i);
+      }
+
+      else if (f.type === "timestamp") {
+        const i = document.createElement("input");
+        i.type = "datetime-local";
+        i.id = `f-${f.name}`;
+
+        const s = document.createElement("select");
+        s.id = `s-${f.name}`;
+
+        ["R","f","F","t","T"].forEach(v=>{
+          const o=document.createElement("option");
+          o.value=v;
+          o.textContent=v;
+          s.appendChild(o);
+        });
+
+        box.appendChild(i);
+        box.appendChild(s);
+      }
+
+      else {
+        const i = document.createElement("input");
+        i.id = `f-${f.name}`;
+        i.value = f.default || "";
+        box.appendChild(i);
+      }
+
+      formContainer.appendChild(box);
+    });
+  }
+
+  function discordTime(date, style) {
+    return `<t:${Math.floor(new Date(date).getTime()/1000)}:${style}>`;
+  }
+
+  function generate() {
+    let tpl = templateInput.value;
+
+    fieldState.forEach(f=>{
+      const el = document.getElementById(`f-${f.name}`);
+
+      let v = el ? el.value : "";
+
+      if (f.type === "timestamp" && v) {
+        const s = document.getElementById(`s-${f.name}`).value;
+        v = discordTime(v,s);
+      }
+
+      tpl = tpl.replaceAll(`{${f.name}}`, v);
+      tpl = tpl.replaceAll(`{${f.name}:${f.type}}`, v);
+    });
+
+    output.textContent = tpl;
+  }
+
+  function saveTemplate() {
+    const name = prompt("Template name:");
+    if (!name) return;
+
+    const templates = getTemplates();
+
+    const fieldsMap = {};
+    fieldState.forEach(f => {
+      fieldsMap[f.name] = {
+        type: f.type,
+        default: f.default || ""
+      };
+    });
+
+    const newTpl = {
+      name,
+      template: templateInput.value,
+      fields: fieldsMap
+    };
+
+    const i = templates.findIndex(t => t.name === name);
+
+    if (i !== -1) templates[i] = newTpl;
+    else templates.push(newTpl);
+
+    saveTemplates(templates);
+    renderDropdown();
+
+    alert(i !== -1 ? "Overwritten" : "Saved");
+  }
+
+  function deleteTemplate() {
+    const i = templateSelect.value;
+    if (i === "new") return;
+
+    const t = getTemplates();
+
+    if (!confirm("Delete template?")) return;
+
+    t.splice(i,1);
+    saveTemplates(t);
+
+    location.reload();
+  }
+
+  window.updateType = (i,type) => {
+    fieldState[i].type = type;
+    renderForm();
+    syncTemplateFromFields();
+  };
+
+  window.updateDefault = (i,val) => {
+    fieldState[i].default = val;
+    saveFieldDefaults(); // 🔥 AUTO SAVE DEFAULTS
+  };
+
+  function loadTemplate(index) {
+    if (index === "new") {
+      templateInput.value = "";
+      fieldState = [];
+      fieldEditor.innerHTML = "";
+      formContainer.innerHTML = "";
+      currentIndex = null;
+      return;
+    }
+
+    currentIndex = index;
+
+    const tpl = getTemplates()[index];
+
+    templateInput.value = tpl.template;
+
+    fieldState = extract(tpl.template, tpl.fields || {});
+
+    const savedDefaults = loadFieldDefaults();
+    if (savedDefaults) {
+      fieldState = fieldState.map(f => {
+        const match = savedDefaults.find(s => s.name === f.name);
+        if (match) f.default = match.default;
+        return f;
+      });
+    }
+
+    renderFields();
+    renderForm();
+  }
+
+  templateSelect.onchange = () => loadTemplate(templateSelect.value);
+
+  document.getElementById("saveBtn").onclick = saveTemplate;
+  document.getElementById("deleteBtn").onclick = deleteTemplate;
+  document.getElementById("generateBtn").onclick = generate;
+  document.getElementById("copyBtn").onclick =
+    () => navigator.clipboard.writeText(output.textContent);
+
+  renderDropdown();
+
+})();
+
+</script>
+
+</body>
+</html>
