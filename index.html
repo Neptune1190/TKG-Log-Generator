@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <title>TKG Log Generator</title>
 
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
 <style>
   body {
     font-family: monospace;
@@ -92,6 +94,12 @@
     <label>Template</label>
     <select id="templateSelect"></select>
 
+    <label>Time Format</label>
+    <select id="timeFormat">
+      <option value="12">12 Hour (AM/PM)</option>
+      <option value="24" selected>24 Hour</option>
+    </select>
+
     <label>Template Editor</label>
     <textarea id="templateInput"></textarea>
 
@@ -122,6 +130,8 @@
   Made with ❤️ by Neptune6866, with inspiration from hxyqt
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
 <script>
 
 (() => {
@@ -131,6 +141,7 @@
   const fieldEditor = document.getElementById("fieldEditor");
   const formContainer = document.getElementById("formContainer");
   const output = document.getElementById("output");
+  const timeFormat = document.getElementById("timeFormat");
 
   let fieldState = [];
   let currentIndex = null;
@@ -141,17 +152,16 @@
   const saveTemplates = (t) =>
     localStorage.setItem("tkgTemplates", JSON.stringify(t));
 
-  function saveFieldDefaults() {
-    localStorage.setItem("tkgFieldDefaults", JSON.stringify(fieldState));
-  }
-
-  function loadFieldDefaults() {
-    return JSON.parse(localStorage.getItem("tkgFieldDefaults") || "null");
+  function getFlatpickrConfig() {
+    return {
+      enableTime: true,
+      dateFormat: "Y-m-d H:i",
+      time_24hr: timeFormat.value === "24"
+    };
   }
 
   function renderDropdown() {
     const t = getTemplates();
-
     templateSelect.innerHTML =
       `<option value="new">+ New Template</option>` +
       t.map((x,i)=>`<option value="${i}">${x.name}</option>`).join("");
@@ -197,6 +207,14 @@
       const box = document.createElement("div");
       box.className = "fieldBox";
 
+      let defaultInput = "";
+
+      if (f.type === "timestamp") {
+        defaultInput = `<input id="d-${f.name}" placeholder="Pick default...">`;
+      } else {
+        defaultInput = `<input value="${f.default || ""}" onchange="updateDefault(${i}, this.value)">`;
+      }
+
       box.innerHTML = `
         <label>${f.name}</label>
 
@@ -211,10 +229,19 @@
         </div>
 
         <label>Default value</label>
-        <input value="${f.default || ""}" onchange="updateDefault(${i}, this.value)">
+        ${defaultInput}
       `;
 
       fieldEditor.appendChild(box);
+
+      if (f.type === "timestamp") {
+        const el = document.getElementById(`d-${f.name}`);
+        flatpickr(el, getFlatpickrConfig());
+        el._flatpickr.setDate(f.default || "", true);
+        el.onChange = (_, dateStr) => {
+          fieldState[i].default = dateStr;
+        };
+      }
     });
   }
 
@@ -228,17 +255,14 @@
 
       box.innerHTML = `<label>${f.name}</label>`;
 
-      if (f.type === "textarea") {
-        const i = document.createElement("textarea");
-        i.id = `f-${f.name}`;
-        i.value = f.default || "";
-        box.appendChild(i);
-      }
+      if (f.type === "timestamp") {
 
-      else if (f.type === "timestamp") {
         const i = document.createElement("input");
-        i.type = "datetime-local";
         i.id = `f-${f.name}`;
+
+        box.appendChild(i);
+
+        flatpickr(i, getFlatpickrConfig());
 
         const s = document.createElement("select");
         s.id = `s-${f.name}`;
@@ -250,7 +274,6 @@
           s.appendChild(o);
         });
 
-        box.appendChild(i);
         box.appendChild(s);
       }
 
@@ -342,7 +365,6 @@
 
   window.updateDefault = (i,val) => {
     fieldState[i].default = val;
-    saveFieldDefaults(); // 🔥 AUTO SAVE DEFAULTS
   };
 
   function loadTemplate(index) {
@@ -363,20 +385,20 @@
 
     fieldState = extract(tpl.template, tpl.fields || {});
 
-    const savedDefaults = loadFieldDefaults();
-    if (savedDefaults) {
-      fieldState = fieldState.map(f => {
-        const match = savedDefaults.find(s => s.name === f.name);
-        if (match) f.default = match.default;
-        return f;
-      });
-    }
-
     renderFields();
     renderForm();
   }
 
   templateSelect.onchange = () => loadTemplate(templateSelect.value);
+
+  timeFormat.addEventListener("change", () => {
+    document.querySelectorAll("input").forEach(el => {
+      if (el._flatpickr) {
+        el._flatpickr.destroy();
+        flatpickr(el, getFlatpickrConfig());
+      }
+    });
+  });
 
   document.getElementById("saveBtn").onclick = saveTemplate;
   document.getElementById("deleteBtn").onclick = deleteTemplate;
