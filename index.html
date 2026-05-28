@@ -16,7 +16,10 @@
 
   h2 { color: #ff5555; }
 
-  label { display:block; margin-top:10px; }
+  label {
+    display:block;
+    margin-top:10px;
+  }
 
   input, textarea, select {
     width:100%;
@@ -28,7 +31,10 @@
     box-sizing:border-box;
   }
 
-  textarea { min-height:120px; resize:vertical; }
+  textarea {
+    min-height:140px;
+    resize:vertical;
+  }
 
   button {
     margin-top:10px;
@@ -43,9 +49,18 @@
   #copyBtn { background:#4caf50; margin-left:10px; }
   #deleteBtn { background:#b91c1c; margin-left:10px; }
   #shareBtn { background:#3b82f6; margin-left:10px; }
+  #addFieldBtn { background:#7c3aed; margin-left:10px; }
 
-  .row { display:flex; gap:15px; flex-wrap:wrap; }
-  .panel { flex:1; min-width:340px; }
+  .row {
+    display:flex;
+    gap:15px;
+    flex-wrap:wrap;
+  }
+
+  .panel {
+    flex:1;
+    min-width:340px;
+  }
 
   .fieldBox {
     background:#15151a;
@@ -65,6 +80,12 @@
   .smallSelect { width:40%; }
   .smallInput { width:60%; }
 
+  .clearBtn {
+    background:#444;
+    padding:6px 10px;
+    margin-top:0;
+  }
+
   #output {
     background:#1e1e22;
     color:#00ff9c;
@@ -76,16 +97,30 @@
   }
 
   footer {
-    margin-top: 25px;
-    text-align: center;
-    color: #777;
-    font-size: 0.85em;
+    margin-top:25px;
+    text-align:center;
+    color:#777;
+    font-size:0.85em;
   }
 
-  .clearBtn {
-    background:#444;
-    padding:6px 10px;
-    margin-top:0;
+  .builderBox {
+    background:#15151a;
+    border:1px solid #333;
+    padding:12px;
+    border-radius:6px;
+    margin-top:15px;
+  }
+
+  .builderRow {
+    display:flex;
+    gap:10px;
+    margin-top:10px;
+  }
+
+  @media(max-width:900px){
+    .row {
+      flex-direction:column;
+    }
   }
 </style>
 </head>
@@ -113,6 +148,27 @@
     <button id="saveBtn">Save / Overwrite</button>
     <button id="deleteBtn">Delete</button>
     <button id="shareBtn">Share Template</button>
+
+    <div class="builderBox">
+
+      <h3>Visual Template Builder</h3>
+
+      <div class="builderRow">
+        <input id="builderLabel" placeholder="Label (Example: Host)">
+        <input id="builderField" placeholder="Field Name (Example: Host)">
+      </div>
+
+      <div class="builderRow">
+        <select id="builderType">
+          <option value="text">text</option>
+          <option value="textarea">textarea</option>
+          <option value="timestamp">timestamp</option>
+        </select>
+
+        <button id="addFieldBtn">Add Field</button>
+      </div>
+
+    </div>
 
     <h3>Fields</h3>
     <div id="fieldEditor"></div>
@@ -178,16 +234,20 @@
 
   function renderDropdown() {
     const t = getTemplates();
+
     templateSelect.innerHTML =
       `<option value="new">+ New Template</option>` +
       t.map((x,i)=>`<option value="${i}">${x.name}</option>`).join("");
   }
 
   function extract(template, saved = {}) {
+
     const matches = [...template.matchAll(/{(.*?)}/g)];
 
     return [...new Map(matches.map(m => {
+
       const [name, type] = m[1].split(":");
+
       const s = saved[name] || {};
 
       return [name, {
@@ -195,19 +255,27 @@
         type: s.type || type || "text",
         default: s.default || ""
       }];
+
     })).values()];
   }
 
   function syncTemplateFromFields() {
+
     let tpl = templateInput.value;
 
     fieldState.forEach(f => {
-      tpl = tpl.replace(new RegExp(`{${f.name}(:.*?)?}`, "g"), `{${f.name}}`);
+      tpl = tpl.replace(
+        new RegExp(`{${f.name}(:.*?)?}`, "g"),
+        `{${f.name}}`
+      );
     });
 
     fieldState.forEach(f => {
       if (f.type !== "text") {
-        tpl = tpl.replaceAll(`{${f.name}}`, `{${f.name}:${f.type}}`);
+        tpl = tpl.replaceAll(
+          `{${f.name}}`,
+          `{${f.name}:${f.type}}`
+        );
       }
     });
 
@@ -215,6 +283,7 @@
   }
 
   function renderFields() {
+
     fieldEditor.innerHTML = "";
 
     fieldState.forEach((f,i)=>{
@@ -225,63 +294,101 @@
       let defaultHTML = "";
 
       if (f.type === "timestamp") {
+
         defaultHTML = `
           <div class="fieldRow">
             <input id="d-${f.name}" placeholder="Pick default...">
-            <button class="clearBtn" type="button" id="clear-${f.name}">Clear</button>
+            <button class="clearBtn" type="button" id="clear-${f.name}">
+              Clear
+            </button>
           </div>
         `;
+
       } else {
-        defaultHTML = `<input value="${f.default || ""}" onchange="updateDefault(${i}, this.value)">`;
+
+        defaultHTML = `
+          <input
+            value="${f.default || ""}"
+            onchange="updateDefault(${i}, this.value)"
+          >
+        `;
       }
 
       box.innerHTML = `
         <label>${f.name}</label>
 
         <div class="fieldRow">
-          <select onchange="updateType(${i}, this.value)" class="smallSelect">
+
+          <select
+            onchange="updateType(${i}, this.value)"
+            class="smallSelect"
+          >
             <option ${f.type==="text"?"selected":""}>text</option>
             <option ${f.type==="textarea"?"selected":""}>textarea</option>
             <option ${f.type==="timestamp"?"selected":""}>timestamp</option>
           </select>
 
           <input class="smallInput" value="${f.name}" disabled />
+
         </div>
 
         <label>Default value</label>
+
         ${defaultHTML}
       `;
 
       fieldEditor.appendChild(box);
 
       if (f.type === "timestamp") {
+
         const el = document.getElementById(`d-${f.name}`);
-        const fp = flatpickr(el, getFlatpickrConfig(f.default));
+
+        const fp = flatpickr(
+          el,
+          getFlatpickrConfig(f.default)
+        );
 
         if (f.default) {
           setTimeout(() => fp.setDate(f.default, true), 0);
         }
 
         fp.config.onChange.push((selectedDates) => {
+
           if (!selectedDates.length) return;
-          fieldState[i].default = selectedDates[0].toISOString();
-          syncFormTimestamp(f.name, fieldState[i].default);
+
+          fieldState[i].default =
+            selectedDates[0].toISOString();
+
+          syncFormTimestamp(
+            f.name,
+            fieldState[i].default
+          );
+
         });
 
         document.getElementById(`clear-${f.name}`).onclick = () => {
+
           fieldState[i].default = "";
+
           fp.clear();
+
+          syncFormTimestamp(f.name, "");
+
         };
       }
+
     });
+
   }
 
   function renderForm() {
+
     formContainer.innerHTML = "";
 
     fieldState.forEach(f=>{
 
       const box = document.createElement("div");
+
       box.className = "fieldBox";
 
       box.innerHTML = `<label>${f.name}</label>`;
@@ -289,84 +396,148 @@
       if (f.type === "timestamp") {
 
         const i = document.createElement("input");
+
         i.id = `f-${f.name}`;
+
         box.appendChild(i);
 
-        const fp = flatpickr(i, getFlatpickrConfig(f.default));
+        const fp = flatpickr(
+          i,
+          getFlatpickrConfig(f.default)
+        );
 
         if (f.default) {
           setTimeout(() => fp.setDate(f.default, true), 0);
         }
 
         const s = document.createElement("select");
+
         s.id = `s-${f.name}`;
 
-        ["R","f","F","t","T"].forEach(v=>{
-          const o=document.createElement("option");
-          o.value=v;
-          o.textContent=v;
+        [
+          ["R","Relative"],
+          ["f","Short Date/Time"],
+          ["F","Long Date/Time"],
+          ["d","Short Date"],
+          ["D","Long Date"],
+          ["t","Short Time"],
+          ["T","Long Time"]
+        ].forEach(v=>{
+
+          const o = document.createElement("option");
+
+          o.value = v[0];
+          o.textContent = `${v[0]} — ${v[1]}`;
+
           s.appendChild(o);
+
         });
 
         box.appendChild(s);
-      }
 
-      else {
-        const i = document.createElement("input");
-        i.id = `f-${f.name}`;
-        i.value = f.default || "";
-        box.appendChild(i);
+      } else {
+
+        if (f.type === "textarea") {
+
+          const t = document.createElement("textarea");
+
+          t.id = `f-${f.name}`;
+          t.value = f.default || "";
+
+          box.appendChild(t);
+
+        } else {
+
+          const i = document.createElement("input");
+
+          i.id = `f-${f.name}`;
+          i.value = f.default || "";
+
+          box.appendChild(i);
+
+        }
+
       }
 
       formContainer.appendChild(box);
+
     });
+
   }
 
   function syncFormTimestamp(name, value) {
+
     const el = document.getElementById(`f-${name}`);
+
     if (el && el._flatpickr) {
       el._flatpickr.setDate(value || null, true);
     }
+
   }
 
   function discordTime(date, style) {
-    return `<t:${Math.floor(new Date(date).getTime()/1000)}:${style}>`;
+
+    return `<t:${Math.floor(
+      new Date(date).getTime()/1000
+    )}:${style}>`;
+
   }
 
   function generate() {
+
     let tpl = templateInput.value;
 
     fieldState.forEach(f=>{
+
       const el = document.getElementById(`f-${f.name}`);
+
       let v = el ? el.value : "";
 
       if (f.type === "timestamp" && v) {
+
         const s = document.getElementById(`s-${f.name}`).value;
+
         v = discordTime(v,s);
+
       }
 
       tpl = tpl.replaceAll(`{${f.name}}`, v);
-      tpl = tpl.replaceAll(`{${f.name}:${f.type}}`, v);
+
+      tpl = tpl.replaceAll(
+        `{${f.name}:${f.type}}`,
+        v
+      );
+
     });
 
     output.textContent = tpl;
+
   }
 
   function saveTemplate() {
+
     const name = prompt("Template name:");
+
     if (!name) return;
 
     const templates = getTemplates();
 
     const fieldsMap = {};
+
     fieldState.forEach(f => {
+
       fieldsMap[f.name] = {
         type: f.type,
         default: f.default || ""
       };
+
     });
 
-    const newTpl = { name, template: templateInput.value, fields: fieldsMap };
+    const newTpl = {
+      name,
+      template: templateInput.value,
+      fields: fieldsMap
+    };
 
     const i = templates.findIndex(t => t.name === name);
 
@@ -374,139 +545,204 @@
     else templates.push(newTpl);
 
     saveTemplates(templates);
+
     renderDropdown();
+
   }
 
   function shareTemplate() {
+
     const data = {
       template: templateInput.value,
       fields: fieldState
     };
 
     const encoded = encodeTemplate(data);
-    const url = `${location.origin}${location.pathname}?tpl=${encoded}`;
+
+    const url =
+      `${location.origin}${location.pathname}?tpl=${encoded}`;
 
     navigator.clipboard.writeText(url);
+
     alert("Share link copied!");
+
   }
 
   function loadFromURL() {
+
     const params = new URLSearchParams(location.search);
+
     const tpl = params.get("tpl");
 
     if (!tpl) return false;
 
     try {
+
       const data = decodeTemplate(tpl);
 
       templateInput.value = data.template;
+
       fieldState = data.fields || [];
 
       renderFields();
       renderForm();
 
       return true;
-    } catch (e) {
-      console.error("Bad template URL");
+
+    } catch {
+
       return false;
+
     }
+
   }
 
   function promptImport() {
+
     setTimeout(() => {
-      const ok = confirm("This is a shared template. Do you want to save it to your local templates?");
+
+      const ok = confirm(
+        "This is a shared template. Save it locally?"
+      );
+
       if (!ok) return;
 
-      const name = prompt("Name for this template:");
-      if (!name) return;
+      saveTemplate();
 
-      const templates = getTemplates();
-
-      const fieldsMap = {};
-      fieldState.forEach(f => {
-        fieldsMap[f.name] = {
-          type: f.type,
-          default: f.default || ""
-        };
-      });
-
-      const newTpl = { name, template: templateInput.value, fields: fieldsMap };
-
-      const i = templates.findIndex(t => t.name === name);
-
-      if (i !== -1) templates[i] = newTpl;
-      else templates.push(newTpl);
-
-      saveTemplates(templates);
-      renderDropdown();
     }, 200);
+
   }
 
   function deleteTemplate() {
+
     const i = templateSelect.value;
+
     if (i === "new") return;
 
     const t = getTemplates();
+
     if (!confirm("Delete template?")) return;
 
     t.splice(i,1);
+
     saveTemplates(t);
+
     location.reload();
+
+  }
+
+  function addVisualField() {
+
+    const label =
+      document.getElementById("builderLabel").value.trim();
+
+    const field =
+      document.getElementById("builderField").value.trim();
+
+    const type =
+      document.getElementById("builderType").value;
+
+    if (!label || !field) return;
+
+    let token = `{${field}}`;
+
+    if (type !== "text") {
+      token = `{${field}:${type}}`;
+    }
+
+    const line = `${label}: ${token}`;
+
+    if (templateInput.value.trim()) {
+      templateInput.value += "\n" + line;
+    } else {
+      templateInput.value = line;
+    }
+
+    fieldState = extract(templateInput.value, {});
+
+    renderFields();
+    renderForm();
+
+    document.getElementById("builderLabel").value = "";
+    document.getElementById("builderField").value = "";
+
   }
 
   window.updateType = (i,type) => {
+
     fieldState[i].type = type;
+
     renderForm();
+
     syncTemplateFromFields();
+
   };
 
   window.updateDefault = (i,val) => {
+
     fieldState[i].default = val;
+
   };
 
   function loadTemplate(index) {
+
     if (index === "new") {
+
       templateInput.value = "";
+
       fieldState = [];
+
       fieldEditor.innerHTML = "";
       formContainer.innerHTML = "";
+
       return;
+
     }
 
     const tpl = getTemplates()[index];
 
     templateInput.value = tpl.template;
-    fieldState = extract(tpl.template, tpl.fields || {});
+
+    fieldState = extract(
+      tpl.template,
+      tpl.fields || {}
+    );
 
     renderFields();
     renderForm();
+
   }
 
-  templateSelect.onchange = () => loadTemplate(templateSelect.value);
+  templateSelect.onchange =
+    () => loadTemplate(templateSelect.value);
 
   timeFormat.addEventListener("change", () => {
-    document.querySelectorAll("input").forEach(el => {
-      if (el._flatpickr) {
-        el._flatpickr.destroy();
-        flatpickr(el, getFlatpickrConfig());
-      }
-    });
+
+    renderFields();
+    renderForm();
+
   });
 
   document.getElementById("saveBtn").onclick = saveTemplate;
   document.getElementById("deleteBtn").onclick = deleteTemplate;
   document.getElementById("generateBtn").onclick = generate;
-  document.getElementById("copyBtn").onclick =
-    () => navigator.clipboard.writeText(output.textContent);
   document.getElementById("shareBtn").onclick = shareTemplate;
 
+  document.getElementById("copyBtn").onclick =
+    () => navigator.clipboard.writeText(output.textContent);
+
+  document.getElementById("addFieldBtn").onclick =
+    addVisualField;
+
   const loaded = loadFromURL();
-  if (loaded) promptImport();
+
+  if (loaded) {
+    promptImport();
+  }
 
   renderDropdown();
 
 })();
-
 </script>
 
 </body>
