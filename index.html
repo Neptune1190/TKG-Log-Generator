@@ -42,6 +42,7 @@
 
   #copyBtn { background:#4caf50; margin-left:10px; }
   #deleteBtn { background:#b91c1c; margin-left:10px; }
+  #shareBtn { background:#3b82f6; margin-left:10px; }
 
   .row { display:flex; gap:15px; flex-wrap:wrap; }
   .panel { flex:1; min-width:340px; }
@@ -58,6 +59,7 @@
     display:flex;
     gap:10px;
     margin-top:6px;
+    align-items:center;
   }
 
   .smallSelect { width:40%; }
@@ -78,6 +80,12 @@
     text-align: center;
     color: #777;
     font-size: 0.85em;
+  }
+
+  .clearBtn {
+    background:#444;
+    padding:6px 10px;
+    margin-top:0;
   }
 </style>
 </head>
@@ -103,7 +111,8 @@
     <textarea id="templateInput"></textarea>
 
     <button id="saveBtn">Save / Overwrite</button>
-    <button id="deleteBtn">Delete Template</button>
+    <button id="deleteBtn">Delete</button>
+    <button id="shareBtn">Share Template</button>
 
     <h3>Fields</h3>
     <div id="fieldEditor"></div>
@@ -149,6 +158,14 @@
 
   const saveTemplates = (t) =>
     localStorage.setItem("tkgTemplates", JSON.stringify(t));
+
+  function encodeTemplate(obj) {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+  }
+
+  function decodeTemplate(str) {
+    return JSON.parse(decodeURIComponent(escape(atob(str))));
+  }
 
   function getFlatpickrConfig(defaultValue = null) {
     return {
@@ -208,7 +225,12 @@
       let defaultHTML = "";
 
       if (f.type === "timestamp") {
-        defaultHTML = `<input id="d-${f.name}" placeholder="Pick default...">`;
+        defaultHTML = `
+          <div class="fieldRow">
+            <input id="d-${f.name}" placeholder="Pick default...">
+            <button class="clearBtn" type="button" id="clear-${f.name}">Clear</button>
+          </div>
+        `;
       } else {
         defaultHTML = `<input value="${f.default || ""}" onchange="updateDefault(${i}, this.value)">`;
       }
@@ -234,21 +256,22 @@
 
       if (f.type === "timestamp") {
         const el = document.getElementById(`d-${f.name}`);
-
-        flatpickr(el, getFlatpickrConfig(f.default));
+        const fp = flatpickr(el, getFlatpickrConfig(f.default));
 
         if (f.default) {
-          setTimeout(() => {
-            if (el._flatpickr) {
-              el._flatpickr.setDate(f.default, true);
-            }
-          }, 0);
+          setTimeout(() => fp.setDate(f.default, true), 0);
         }
 
-        el.addEventListener("change", () => {
-          fieldState[i].default = el.value;
-          syncFormTimestamp(f.name, el.value);
+        fp.config.onChange.push((selectedDates) => {
+          if (!selectedDates.length) return;
+          fieldState[i].default = selectedDates[0].toISOString();
+          syncFormTimestamp(f.name, fieldState[i].default);
         });
+
+        document.getElementById(`clear-${f.name}`).onclick = () => {
+          fieldState[i].default = "";
+          fp.clear();
+        };
       }
     });
   }
@@ -269,14 +292,10 @@
         i.id = `f-${f.name}`;
         box.appendChild(i);
 
-        flatpickr(i, getFlatpickrConfig(f.default));
+        const fp = flatpickr(i, getFlatpickrConfig(f.default));
 
         if (f.default) {
-          setTimeout(() => {
-            if (i._flatpickr) {
-              i._flatpickr.setDate(f.default, true);
-            }
-          }, 0);
+          setTimeout(() => fp.setDate(f.default, true), 0);
         }
 
         const s = document.createElement("select");
@@ -358,6 +377,38 @@
     renderDropdown();
   }
 
+  function shareTemplate() {
+    const data = {
+      template: templateInput.value,
+      fields: fieldState
+    };
+
+    const encoded = encodeTemplate(data);
+    const url = `${location.origin}${location.pathname}?tpl=${encoded}`;
+
+    navigator.clipboard.writeText(url);
+    alert("Share link copied!");
+  }
+
+  function loadFromURL() {
+    const params = new URLSearchParams(location.search);
+    const tpl = params.get("tpl");
+
+    if (!tpl) return;
+
+    try {
+      const data = decodeTemplate(tpl);
+
+      templateInput.value = data.template;
+      fieldState = data.fields || [];
+
+      renderFields();
+      renderForm();
+    } catch (e) {
+      console.error("Bad template URL");
+    }
+  }
+
   function deleteTemplate() {
     const i = templateSelect.value;
     if (i === "new") return;
@@ -415,7 +466,10 @@
   document.getElementById("copyBtn").onclick =
     () => navigator.clipboard.writeText(output.textContent);
 
+  document.getElementById("shareBtn").onclick = shareTemplate;
+
   renderDropdown();
+  loadFromURL();
 
 })();
 
