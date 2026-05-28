@@ -394,7 +394,7 @@
     const params = new URLSearchParams(location.search);
     const tpl = params.get("tpl");
 
-    if (!tpl) return;
+    if (!tpl) return false;
 
     try {
       const data = decodeTemplate(tpl);
@@ -404,9 +404,42 @@
 
       renderFields();
       renderForm();
+
+      return true;
     } catch (e) {
       console.error("Bad template URL");
+      return false;
     }
+  }
+
+  function promptImport() {
+    setTimeout(() => {
+      const ok = confirm("This is a shared template. Do you want to save it to your local templates?");
+      if (!ok) return;
+
+      const name = prompt("Name for this template:");
+      if (!name) return;
+
+      const templates = getTemplates();
+
+      const fieldsMap = {};
+      fieldState.forEach(f => {
+        fieldsMap[f.name] = {
+          type: f.type,
+          default: f.default || ""
+        };
+      });
+
+      const newTpl = { name, template: templateInput.value, fields: fieldsMap };
+
+      const i = templates.findIndex(t => t.name === name);
+
+      if (i !== -1) templates[i] = newTpl;
+      else templates.push(newTpl);
+
+      saveTemplates(templates);
+      renderDropdown();
+    }, 200);
   }
 
   function deleteTemplate() {
@@ -465,11 +498,12 @@
   document.getElementById("generateBtn").onclick = generate;
   document.getElementById("copyBtn").onclick =
     () => navigator.clipboard.writeText(output.textContent);
-
   document.getElementById("shareBtn").onclick = shareTemplate;
 
+  const loaded = loadFromURL();
+  if (loaded) promptImport();
+
   renderDropdown();
-  loadFromURL();
 
 })();
 
