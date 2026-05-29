@@ -240,9 +240,6 @@
       t.map((x,i)=>`<option value="${i}">${x.name}</option>`).join("");
   }
 
-  /* =========================
-     UPDATED: supports timestamp style
-  ========================= */
   function extract(template, saved = {}) {
 
     const matches = [...template.matchAll(/{(.*?)}/g)];
@@ -254,6 +251,7 @@
       const name = parts[0];
       const type = parts[1] || "text";
       const style = parts[2] || "";
+      const offset = parts[3] || "";
 
       const s = saved[name] || {};
 
@@ -261,15 +259,13 @@
         name,
         type: s.type || type || "text",
         default: s.default || "",
-        style: s.style || style || ""
+        style: s.style || style || "",
+        offset: s.offset || offset || ""
       }];
 
     })).values()];
   }
 
-  /* =========================
-     UPDATED: preserve timestamp style
-  ========================= */
   function syncTemplateFromFields() {
 
     let tpl = templateInput.value;
@@ -286,9 +282,13 @@
           ? `:${f.style}`
           : "";
 
+        const offsetPart = f.type === "timestamp" && f.offset
+          ? `:${f.offset}`
+          : "";
+
         tpl = tpl.replaceAll(
           `{${f.name}}`,
-          `{${f.name}:${f.type}${stylePart}}`
+          `{${f.name}:${f.type}${stylePart}${offsetPart}}`
         );
       }
     });
@@ -316,6 +316,13 @@
               Clear
             </button>
           </div>
+
+          <label>Auto Offset</label>
+          <input
+            value="${f.offset || ""}"
+            placeholder="+3h / +1d / +30m"
+            onchange="updateOffset(${i}, this.value)"
+          >
         `;
 
       } else {
@@ -434,7 +441,6 @@
 
         });
 
-        /* NEW: persist style */
         s.onchange = () => {
           fieldState.find(x => x.name === f.name).style = s.value;
           syncTemplateFromFields();
@@ -494,21 +500,83 @@
 
       const el = document.getElementById(`f-${f.name}`);
 
-      let v = el ? el.value : "";
+      let v = el ? el.value.trim() : "";
 
-      if (f.type === "timestamp" && v) {
+      if (f.type === "timestamp") {
+
+        let dateObj;
+
+        if (v) {
+          dateObj = new Date(v);
+        } else {
+          dateObj = new Date();
+        }
+
+        if (f.offset) {
+
+          const match = f.offset.match(/^([+-]?\d+)([mhd])$/);
+
+          if (match) {
+
+            const amount = parseInt(match[1]);
+            const unit = match[2];
+
+            if (unit === "m") {
+              dateObj.setMinutes(dateObj.getMinutes() + amount);
+            }
+
+            if (unit === "h") {
+              dateObj.setHours(dateObj.getHours() + amount);
+            }
+
+            if (unit === "d") {
+              dateObj.setDate(dateObj.getDate() + amount);
+            }
+
+          }
+
+        }
 
         const s = document.getElementById(`s-${f.name}`).value
           || f.style
           || "R";
 
-        v = discordTime(v,s);
+        v = discordTime(dateObj,s);
       }
 
       tpl = tpl.replaceAll(`{${f.name}}`, v);
-      tpl = tpl.replaceAll(`{${f.name}:${f.type}}`, v);
+
+      tpl = tpl.replaceAll(
+        `{${f.name}:${f.type}}`,
+        v
+      );
+
+      tpl = tpl.replaceAll(
+        `{${f.name}:${f.type}:${f.style || ""}:${f.offset || ""}}`,
+        v
+      );
 
     });
+
+    tpl = tpl
+      .split("\n")
+      .filter(line => {
+
+        const cleaned = line.trim();
+
+        if (!cleaned) return false;
+
+        const parts = cleaned.split(":");
+
+        if (parts.length < 2) return true;
+
+        const afterColon =
+          parts.slice(1).join(":").trim();
+
+        return afterColon !== "";
+
+      })
+      .join("\n");
 
     output.textContent = tpl;
 
@@ -528,7 +596,8 @@
       fieldsMap[f.name] = {
         type: f.type,
         default: f.default || "",
-        style: f.style || ""
+        style: f.style || "",
+        offset: f.offset || ""
       };
     });
 
@@ -664,6 +733,11 @@
     fieldState[i].default = val;
   };
 
+  window.updateOffset = (i,val) => {
+    fieldState[i].offset = val.trim();
+    syncTemplateFromFields();
+  };
+
   function loadTemplate(index) {
 
     if (index === "new") {
@@ -689,6 +763,15 @@
 
   templateSelect.onchange =
     () => loadTemplate(templateSelect.value);
+
+  templateInput.addEventListener("input", () => {
+
+    fieldState = extract(templateInput.value, {});
+
+    renderFields();
+    renderForm();
+
+  });
 
   timeFormat.addEventListener("change", () => {
     renderFields();
